@@ -4,6 +4,27 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import time
 
+# --- Importar tkinter para seleccionar archivos ---
+import tkinter as tk
+from tkinter import filedialog
+# --------------------------------------------------
+
+# --- Función para seleccionar archivos CSV ---
+def seleccionar_archivo_csv(titulo_ventana="Seleccione un archivo CSV"):
+    """
+    Abre una ventana para seleccionar un archivo CSV y retorna la ruta completa.
+    """
+    root = tk.Tk()
+    root.withdraw()  # Oculta la ventana principal de tkinter
+
+    ruta_archivo = filedialog.askopenfilename(
+        title=titulo_ventana,
+        filetypes=[("CSV files", "*.csv"), ("Todos los archivos", "*.*")]
+    )
+    return ruta_archivo
+# ---------------------------------------------------
+
+
 def tic():
     global start_time
     start_time = time.perf_counter()
@@ -180,7 +201,17 @@ if __name__ == "__main__":
     # Assuming the CSV file has columns: 'u', 'v', 'lambda', 'Tao_RP', 'Tao_SW'
     #data = pd.read_csv('37_nodes_system_data.csv')
     #data = pd.read_csv('110_nodes_system_data.csv')
-    data = pd.read_csv('Alim_508_SEAL_system_data.csv')
+    # --- Carga del archivo CSV de la red eléctrica (estructura del sistema) ---
+    ruta_red_csv = seleccionar_archivo_csv("Seleccione el archivo CSV con los datos de la red eléctrica")
+
+    if not ruta_red_csv:
+        print("Operación cancelada por el usuario. No se seleccionó el archivo de red.")
+        exit()
+
+    # Leer archivo con columnas: 'u', 'v', 'lambda', 'Tao_RP', 'Tao_SW'
+    data = pd.read_csv(ruta_red_csv)
+    # -----------------------------------------------------------------------------
+
     
     # Create edges from the DataFrame
     edges = [
@@ -199,7 +230,19 @@ if __name__ == "__main__":
     # Getting load data from a CSV file to a DataFrame
     #load_data = pd.read_csv('37_nodes_load_data.csv')
     #load_data = pd.read_csv('110_nodes_load_data.csv')
-    load_data = pd.read_csv('Alim_508_SEAL_load_data.csv')
+    # --- Carga del archivo CSV de carga eléctrica (consumos por nodo) ---
+    ruta_carga_csv = seleccionar_archivo_csv("Seleccione el archivo CSV con los datos de carga")
+
+    if not ruta_carga_csv:
+        print("Operación cancelada por el usuario. No se seleccionó el archivo de carga.")
+        exit()
+
+    # Leer archivo con columnas: 'Node', 'NC', 'L_MW'
+    load_data = pd.read_csv(ruta_carga_csv)
+    # ---------------------------------------------------------------------
+
+
+
 
     # Assuming the load data has columns: 'Node', 'NC', 'L_MW'
 
