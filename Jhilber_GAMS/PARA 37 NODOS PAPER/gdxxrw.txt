@@ -1,0 +1,1 @@
+par=DATA_NODOS rng=DATA_NODOS! rdim=1 cdim=1

@@ -1,0 +1,461 @@
+GAMS 51.2.1  5fb43f63 Oct 13, 2025          DAX-DAC arm 64bit/macOS - 10/21/25 17:53:39 Page 1
+Sistema de Confiabilidad Generalizado para N Nodos - VERSIÓN FINAL CORREGIDA
+C o m p i l a t i o n
+
+
+      ================================================================================
+      PROGRAMA DE CONFIABILIDAD DE SISTEMAS ELÉCTRICOS RADIALES
+      Versión Final - Implementación exacta
+      ================================================================================
+   8  *===============================================================================
+   9  * PARTE 1: DECLARACIÓN DE CONJUNTOS BASE
+  10  *===============================================================================
+  11  OPTION DECIMALS = 8;
+  12  SETS
+  13      n            /n1*n100/
+  14      DATA_n       /Node, NC, L_MW/
+  15      l            /l1*l100/
+  16      DATA_l       /u, v, km, lambda, Tao_RP, Tao_SW/
+  17      i            /1*100/
+  18  ;
+  19   
+  20  ALIAS (i, j, s, r, ii, jj);
+  21   
+  22  *===============================================================================
+  23  * PARTE 2: PARÁMETROS DE ENTRADA
+  24  *===============================================================================
+  25   
+  26  PARAMETERS
+  27      DATA_NODOS(n,DATA_n)
+  28      DATA_LINEAS(l,DATA_l)
+  29  ;
+  30   
+  31  *===============================================================================
+  32  * PARTE 3: IMPORTACIÓN DE DATOS
+  33  *===============================================================================
+  34   
+  38   
+****  CALL=127gdxxrw DATA_NODOS.xlsx @gdxxrw.txt
+****  Above call failed, RC=127
+****  ERRORLEVEL set to 1
+  39  $call gdxxrw DATA_NODOS.xlsx @gdxxrw.txt
+****                                         $330
+**** 330  CALL failed
+**** File: /Users/davidorosco1/Documents/Cosanac_Calidad/Realibility_Assestment/Jhilber_GAMS/PARA 37 NODOS PAPER/DATA_NODOS.gdx
+**** Msg : No such file or directory: "/Users/davidorosco1/Documents/Cosanac_Calidad/Realibility_Assestment/Jhilber_GAMS/PARA 37 NODOS PAPER/DATA_NODOS.gdx"
+  40  $gdxIn DATA_NODOS.gdx
+****                      $510
+**** 510  Unable to open gdx file for $GDXIN
+  41  $load DATA_NODOS
+****      $502
+**** 502  GDXIN  file not open - ignore rest of line
+  43   
+  47   
+****  CALL=127gdxxrw DATA_LINEAS.xlsx @gdxxrw2.txt
+****  Above call failed, RC=127
+****  ERRORLEVEL set to 1
+  48  $call gdxxrw DATA_LINEAS.xlsx @gdxxrw2.txt
+****                                           $330
+**** 330  CALL failed
+**** File: /Users/davidorosco1/Documents/Cosanac_Calidad/Realibility_Assestment/Jhilber_GAMS/PARA 37 NODOS PAPER/DATA_LINEAS.gdx
+**** Msg : No such file or directory: "/Users/davidorosco1/Documents/Cosanac_Calidad/Realibility_Assestment/Jhilber_GAMS/PARA 37 NODOS PAPER/DATA_LINEAS.gdx"
+  49  $gdxIn DATA_LINEAS.gdx
+****                       $510
+**** 510  Unable to open gdx file for $GDXIN
+  50  $load DATA_LINEAS
+****      $502
+**** 502  GDXIN  file not open - ignore rest of line
+  52  DISPLAY DATA_LINEAS;
+****                    $141
+**** 141  Symbol declared but no values have been assigned. Check for missing
+****         data definition, assignment, data loading or implicit assignment
+****         via a solve statement. Suppress with $onImplicitAssign.
+****         A wild shot: You may have spurious commas in the explanatory
+****         text of a declaration. Check symbol reference list.
+  53  DISPLAY DATA_NODOS;
+****                   $141
+**** 141  Symbol declared but no values have been assigned. Check for missing
+****         data definition, assignment, data loading or implicit assignment
+****         via a solve statement. Suppress with $onImplicitAssign.
+****         A wild shot: You may have spurious commas in the explanatory
+****         text of a declaration. Check symbol reference list.
+  54  *===============================================================================
+  55  * PARTE 4: CONSTRUCCIÓN DE CONJUNTOS DINÁMICOS
+  56  *===============================================================================
+  57   
+  58  SETS
+  59      PSI_N(i)
+  60      PSI_LN(i)
+  61      PSI_SS(i)
+  62      LINEAS(i,j)
+  63      PSI_ADY(i,j)
+  64  ;
+  65   
+  66  PARAMETERS
+  67      temp_LN(i)
+  68      temp_u(i)
+  69      temp_v(i)
+  70      temp_linea(i,j)
+  71  ;
+  72   
+  73  * Inicialización
+  74  temp_LN(i) = 0;
+  75  temp_u(i) = 0;
+  76  temp_v(i) = 0;
+  77  temp_linea(i,j) = 0;
+  78   
+  79  * Identificar nodos de carga
+  80  LOOP(n,
+  81      LOOP(i,
+  82          temp_LN(i)$(ABS(DATA_NODOS(n,'Node') - ORD(i)) < 0.5) = 1;
+  83      );
+  84  );
+  85   
+  86  PSI_LN(i)$(temp_LN(i) > 0.5) = YES;
+  87   
+  88  * Identificar nodos en líneas
+  89  LOOP(l,
+  90      LOOP(i,
+  91          temp_u(i)$(ABS(DATA_LINEAS(l,'u') - ORD(i)) < 0.5) = 1;
+  92          temp_v(i)$(ABS(DATA_LINEAS(l,'v') - ORD(i)) < 0.5) = 1;
+  93      );
+  94  );
+  95   
+  96  PSI_N(i)$((temp_u(i) + temp_v(i)) > 0.5) = YES;
+  97   
+  98  PSI_SS(i)$(PSI_N(i) AND NOT PSI_LN(i)) = YES;
+  99   
+ 100  * Construir conjunto LINEAS (bidireccional)
+ 101  LOOP(l,
+ 102      LOOP(i,
+ 103          LOOP(j,
+ 104              temp_linea(i,j)$((ABS(DATA_LINEAS(l,'u') - ORD(i)) < 0.5 AND
+ 105                                ABS(DATA_LINEAS(l,'v') - ORD(j)) < 0.5) OR
+ 106                               (ABS(DATA_LINEAS(l,'u') - ORD(j)) < 0.5 AND
+ 107                                ABS(DATA_LINEAS(l,'v') - ORD(i)) < 0.5)) = 1;
+ 108          );
+ 109      );
+ 110  );
+ 111   
+ 112  LINEAS(i,j)$(temp_linea(i,j) > 0.5) = YES;
+ 113   
+ 114  * Conjunto de adyacencia PSI_ADY(s,j) = conjunto Psi_s del documento
+ 115  PSI_ADY(s,j)$LINEAS(s,j) = YES;
+ 116   
+ 117  DISPLAY PSI_N, PSI_LN, PSI_SS, LINEAS, PSI_ADY;
+ 118   
+ 119  *===============================================================================
+ 120  * PARTE 5: EXTRACCIÓN DE PARÁMETROS
+ 121  *===============================================================================
+ 122   
+ 123  PARAMETERS
+ 124      NC(i)
+ 125      L_MW(i)
+ 126      lambda_ij(i,j)
+ 127      tau_RP_ij(i,j)
+ 128      tau_SW_ij(i,j)
+ 129  ;
+ 130   
+ 131  NC(i) = 0;
+ 132  L_MW(i) = 0;
+ 133  lambda_ij(i,j) = 0;
+ 134  tau_RP_ij(i,j) = 0;
+ 135  tau_SW_ij(i,j) = 0;
+ 136   
+ 137  LOOP(n,
+ 138      LOOP(i$PSI_LN(i),
+ 139          NC(i)$(ABS(DATA_NODOS(n,'Node') - ORD(i)) < 0.5) = DATA_NODOS(n,'NC');
+ 140          L_MW(i)$(ABS(DATA_NODOS(n,'Node') - ORD(i)) < 0.5) = DATA_NODOS(n,'L_MW');
+ 141      );
+ 142  );
+ 143   
+ 144  LOOP(l,
+ 145      LOOP(i,
+ 146          LOOP(j$LINEAS(i,j),
+ 147              lambda_ij(i,j)$((ABS(DATA_LINEAS(l,'u') - ORD(i)) < 0.5 AND
+ 148                               ABS(DATA_LINEAS(l,'v') - ORD(j)) < 0.5) OR
+ 149                              (ABS(DATA_LINEAS(l,'u') - ORD(j)) < 0.5 AND
+ 150                               ABS(DATA_LINEAS(l,'v') - ORD(i)) < 0.5)) =
+ 151                  DATA_LINEAS(l,'lambda');
+ 152   
+ 153              tau_RP_ij(i,j)$((ABS(DATA_LINEAS(l,'u') - ORD(i)) < 0.5 AND
+ 154                               ABS(DATA_LINEAS(l,'v') - ORD(j)) < 0.5) OR
+ 155                              (ABS(DATA_LINEAS(l,'u') - ORD(j)) < 0.5 AND
+ 156                               ABS(DATA_LINEAS(l,'v') - ORD(i)) < 0.5)) =
+ 157                  DATA_LINEAS(l,'Tao_RP');
+ 158   
+ 159              tau_SW_ij(i,j)$((ABS(DATA_LINEAS(l,'u') - ORD(i)) < 0.5 AND
+ 160                               ABS(DATA_LINEAS(l,'v') - ORD(j)) < 0.5) OR
+ 161                              (ABS(DATA_LINEAS(l,'u') - ORD(j)) < 0.5 AND
+ 162                               ABS(DATA_LINEAS(l,'v') - ORD(i)) < 0.5)) =
+ 163                  DATA_LINEAS(l,'Tao_SW');
+ 164          );
+ 165      );
+ 166  );
+ 167   
+ 168  DISPLAY NC, L_MW, lambda_ij, tau_RP_ij, tau_SW_ij;
+ 169   
+ 170  *===============================================================================
+ 171  * PARTE 6: MODELO DE OPTIMIZACIÓN
+ 172  *===============================================================================
+ 173   
+ 174  PARAMETER nodo_objetivo;
+ 175   
+ 176  VARIABLES
+ 177      f(i,j)
+ 178      g_SS(i)
+ 179      z_obj
+ 180  ;
+ 181   
+ 182  POSITIVE VARIABLES f, g_SS;
+ 183   
+ 184  EQUATIONS
+ 185      obj
+ 186      balance(i)
+ 187  ;
+ 188   
+ 189  obj..
+ 190      z_obj =E= SUM(LINEAS(i,j), f(i,j) + f(j,i));
+ 191   
+ 192  balance(i)$PSI_N(i)..
+ 193      SUM(j$LINEAS(i,j), f(i,j) - f(j,i))
+ 194      =E=
+ 195      g_SS(i)$PSI_SS(i) - (1$(ORD(i) EQ nodo_objetivo));
+ 196   
+ 197  f.UP(i,j)$LINEAS(i,j) = 1;
+ 198  g_SS.UP(i)$PSI_SS(i) = 1;
+ 199   
+ 200  MODEL topo_caracterizacion /obj, balance/;
+ 201   
+ 202  *===============================================================================
+ 203  * PARTE 7: RESOLUCIÓN PARA TODOS LOS NODOS
+ 204  *===============================================================================
+ 205   
+ 206  PARAMETERS
+ 207      f_optimo(i,j,s)
+ 208      g_SS_optimo(i,s)
+ 209      objval(s)
+ 210  ;
+ 211   
+ 212  f_optimo(i,j,s) = 0;
+ 213  g_SS_optimo(i,s) = 0;
+ 214  objval(s) = 0;
+ 215   
+ 216  LOOP(s$PSI_LN(s),
+ 217      nodo_objetivo = ORD(s);
+ 218      SOLVE topo_caracterizacion USING LP MINIMIZING z_obj;
+****                                                          $257
+**** 257  Solve statement not checked because of previous errors
+ 219      LOOP(i,
+ 220          LOOP(j$LINEAS(i,j),
+ 221              f_optimo(i,j,s) = f.L(i,j);
+ 222          );
+ 223      );
+ 224      LOOP(i$PSI_SS(i),
+ 225          g_SS_optimo(i,s) = g_SS.L(i);
+ 226      );
+ 227      objval(s) = z_obj.L;
+****                        $141
+**** 141  Symbol declared but no values have been assigned. Check for missing
+****         data definition, assignment, data loading or implicit assignment
+****         via a solve statement. Suppress with $onImplicitAssign.
+****         A wild shot: You may have spurious commas in the explanatory
+****         text of a declaration. Check symbol reference list.
+ 228  );
+ 229   
+ 230  DISPLAY f_optimo, g_SS_optimo, objval;
+ 231   
+ 232  *===============================================================================
+ 233  * PARTE 8: CÁLCULO DE TASAS DE INTERRUPCIONES (CORREGIDO)
+ 234  *===============================================================================
+ 235   
+ 236  PARAMETERS
+ 237      N_RP(s)
+ 238      N_CB(i,j)
+ 239      N_T(s)
+ 240      N_SW(s)
+ 241      sum_inner_CB(s)
+ 242  ;
+ 243   
+ 244  N_RP(s) = 0;
+ 245  N_CB(i,j) = 0;
+ 246  N_T(s) = 0;
+ 247  N_SW(s) = 0;
+ 248  sum_inner_CB(s) = 0;
+ 249   
+ 250  * Ecuación (15): N_s^RP
+ 251  * N_s^RP = sum_{(i,j) in Upsilon} (f_ijs + f_jis) * lambda_ij
+ 252  * CORRECCIÓN: Usar $(ORD(i) < ORD(j)) para evitar contar dos veces la misma rama
+ 253  * ya que LINEAS es bidireccional: LINEAS(i,j) y LINEAS(j,i) son la misma rama física
+ 254  LOOP(s$PSI_LN(s),
+ 255      N_RP(s) = SUM(LINEAS(i,j)$(ORD(i) < ORD(j)),
+ 256          (f_optimo(i,j,s) + f_optimo(j,i,s)) * lambda_ij(i,j));
+ 257  );
+ 258   
+ 259  DISPLAY "Ecuación (15) - N_RP calculado CORREGIDO", N_RP;
+ 260   
+ 261  * Ecuación (19): N_{ij}^{CB}
+ 262  * sum_{r in Psi_s} f_rss * lambda_rs
+ 263  LOOP(s$PSI_LN(s),
+ 264      sum_inner_CB(s) = 0;
+ 265      LOOP(r$PSI_ADY(s,r),
+ 266          sum_inner_CB(s) = sum_inner_CB(s) + f_optimo(r,s,s) * lambda_ij(r,s);
+ 267      );
+ 268  );
+ 269   
+ 270  DISPLAY "Suma interna para N_CB", sum_inner_CB;
+ 271   
+ 272  * N_{ij}^{CB} para interruptores en la subestación
+ 273  LOOP(i$PSI_SS(i),
+ 274      LOOP(j$LINEAS(i,j),
+ 275          N_CB(i,j) = SUM(s$PSI_LN(s), sum_inner_CB(s) * f_optimo(i,j,s));
+ 276      );
+ 277  );
+ 278   
+ 279  DISPLAY "Ecuación (19) - N_CB calculado", N_CB;
+ 280   
+ 281  * Ecuación (18): N_s^T
+ 282  LOOP(s$PSI_LN(s),
+ 283      N_T(s) = 0;
+ 284      LOOP(i$PSI_SS(i),
+ 285          LOOP(j$LINEAS(i,j),
+ 286              N_T(s) = N_T(s) + N_CB(i,j) * (f_optimo(i,j,s) + f_optimo(j,i,s));
+ 287          );
+ 288      );
+ 289  );
+ 290   
+ 291  DISPLAY "Ecuación (18) - N_T calculado", N_T;
+ 292   
+ 293  * Ecuación (17): N_s^SW
+ 294  N_SW(s)$PSI_LN(s) = N_T(s) - N_RP(s);
+ 295   
+ 296  DISPLAY "Ecuación (17) - N_SW calculado", N_SW;
+ 297   
+ 298  *===============================================================================
+ 299  * PARTE 9: CÁLCULO DE DURACIONES (CORREGIDO)
+ 300  *===============================================================================
+ 301   
+ 302  PARAMETERS
+ 303      D_RP(s)
+ 304      D_CB_SW(i,j)
+ 305      D_T_SW(s)
+ 306      D_bar_SW(s)
+ 307      D_SW(s)
+ 308      sum_inner_D_CB(s)
+ 309  ;
+ 310   
+ 311  D_RP(s) = 0;
+ 312  D_CB_SW(i,j) = 0;
+ 313  D_T_SW(s) = 0;
+ 314  D_bar_SW(s) = 0;
+ 315  D_SW(s) = 0;
+ 316  sum_inner_D_CB(s) = 0;
+ 317   
+ 318  * Ecuación (25): D_s^RP
+ 319  * D_s^RP = sum_{(i,j) in Upsilon} (f_ijs + f_jis) * lambda_ij * tau_RP_ij
+ 320  * CORRECCIÓN: Usar $(ORD(i) < ORD(j)) para evitar contar dos veces
+ 321  LOOP(s$PSI_LN(s),
+ 322      D_RP(s) = SUM(LINEAS(i,j)$(ORD(i) < ORD(j)),
+ 323          (f_optimo(i,j,s) + f_optimo(j,i,s)) * lambda_ij(i,j) * tau_RP_ij(i,j));
+ 324  );
+ 325   
+ 326  DISPLAY "Ecuación (25) - D_RP calculado CORREGIDO", D_RP;
+ 327   
+ 328  * Ecuación (30): D_{ij}^{CB,SW}
+ 329  LOOP(s$PSI_LN(s),
+ 330      sum_inner_D_CB(s) = 0;
+ 331      LOOP(r$PSI_ADY(s,r),
+ 332          sum_inner_D_CB(s) = sum_inner_D_CB(s) +
+ 333              f_optimo(r,s,s) * lambda_ij(r,s) * tau_SW_ij(r,s);
+ 334      );
+ 335  );
+ 336   
+ 337  DISPLAY "Suma interna para D_CB_SW", sum_inner_D_CB;
+ 338   
+ 339  LOOP(i$PSI_SS(i),
+ 340      LOOP(j$LINEAS(i,j),
+ 341          D_CB_SW(i,j) = SUM(s$PSI_LN(s), sum_inner_D_CB(s) * f_optimo(i,j,s));
+ 342      );
+ 343  );
+ 344   
+ 345  DISPLAY "Ecuación (30) - D_CB_SW calculado", D_CB_SW;
+ 346   
+ 347  * Ecuación (29): D_s^{T,SW}
+ 348  LOOP(s$PSI_LN(s),
+ 349      D_T_SW(s) = 0;
+ 350      LOOP(i$PSI_SS(i),
+ 351          LOOP(j$LINEAS(i,j),
+ 352              D_T_SW(s) = D_T_SW(s) + D_CB_SW(i,j) * (f_optimo(i,j,s) + f_optimo(j,i,s));
+ 353          );
+ 354      );
+ 355  );
+ 356   
+ 357  DISPLAY "Ecuación (29) - D_T_SW calculado", D_T_SW;
+ 358   
+ 359  * Ecuación (28): bar{D}_s^SW
+ 360  * bar{D}_s^SW = sum_{(i,j) in Upsilon} (f_ijs + f_jis) * lambda_ij * tau_SW_ij
+ 361  * CORRECCIÓN: Usar $(ORD(i) < ORD(j)) para evitar contar dos veces
+ 362  LOOP(s$PSI_LN(s),
+ 363      D_bar_SW(s) = SUM(LINEAS(i,j)$(ORD(i) < ORD(j)),
+ 364          (f_optimo(i,j,s) + f_optimo(j,i,s)) * lambda_ij(i,j) * tau_SW_ij(i,j));
+ 365  );
+ 366   
+ 367  DISPLAY "Ecuación (28) - D_bar_SW calculado CORREGIDO", D_bar_SW;
+ 368   
+ 369  * Ecuación (27): D_s^SW
+ 370  D_SW(s)$PSI_LN(s) = D_T_SW(s) - D_bar_SW(s);
+ 371   
+ 372  DISPLAY "Ecuación (27) - D_SW calculado", D_SW;
+ 373   
+ 374  *===============================================================================
+ 375  * PARTE 10: ÍNDICES DE CONFIABILIDAD POR CLIENTE
+ 376  *===============================================================================
+ 377   
+ 378  PARAMETERS
+ 379      CIF(s)
+ 380      CID(s)
+ 381  ;
+ 382   
+ 383  CIF(s)$PSI_LN(s) = N_RP(s) + N_SW(s);
+ 384  CID(s)$PSI_LN(s) = D_RP(s) + D_SW(s);
+ 385   
+ 386  DISPLAY "ÍNDICES POR CLIENTE:", CIF, CID;
+ 387   
+ 388  *===============================================================================
+ 389  * PARTE 11: ÍNDICES DEL SISTEMA
+ 390  *===============================================================================
+ 391   
+ 392  SCALARS
+ 393      total_clientes
+ 394      SAIFI
+ 395      SAIDI
+ 396      ASAI
+ 397      EENS
+ 398  ;
+ 399   
+ 400  total_clientes = SUM(s$PSI_LN(s), NC(s));
+ 401  SAIFI = SUM(s$PSI_LN(s), NC(s) * CIF(s)) / total_clientes;
+ 402  SAIDI = SUM(s$PSI_LN(s), NC(s) * CID(s)) / total_clientes;
+ 403  ASAI = 1 - (SAIDI / 8760);
+ 404  EENS = SUM(s$PSI_LN(s), CID(s) * L_MW(s));
+ 405   
+ 406  DISPLAY "=== ÍNDICES DEL SISTEMA ===";
+ 407  DISPLAY total_clientes, SAIFI, SAIDI, ASAI, EENS;
+
+**** 10 ERROR(S)   0 WARNING(S)
+
+
+COMPILATION TIME     =        0.024 SECONDS      3 MB  51.2.1 5fb43f63 DAX-DAC
+
+
+USER: RIVALDO ZOZIMO GALLEGOS MAMANI                 G251021+0003Ac-GEN
+      252684@unsaac.edu.pe                                    CLA113622
+      License for teaching and research at degree granting institutions
+
+
+**** FILE SUMMARY
+
+Input      /Users/davidorosco1/Documents/Cosanac_Calidad/Realibility_Assestment/Jhilber_GAMS/PARA 37 NODOS PAPER/PROYECTO_02.gms
+Output     /Users/davidorosco1/Documents/Cosanac_Calidad/Realibility_Assestment/Jhilber_GAMS/PARA 37 NODOS PAPER/PROYECTO_02.lst
+
+**** USER ERROR(S) ENCOUNTERED

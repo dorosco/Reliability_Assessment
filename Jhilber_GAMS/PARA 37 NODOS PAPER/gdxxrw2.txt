@@ -1,0 +1,1 @@
+par=DATA_LINEAS rng=DATA_LINEAS! rdim=1 cdim=1

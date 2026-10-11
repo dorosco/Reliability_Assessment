@@ -1,0 +1,13 @@
+name: pulp_networkx
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  #- pandas
+  #- numpy
+  #- scipy
+  #- pytest
+  #- matplotlib
+  - pip=25.0.1
+  - pip:
+    - "-r requirements.txt"
