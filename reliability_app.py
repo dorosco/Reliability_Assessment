@@ -3,7 +3,7 @@ Distribution Network Reliability - Taipy web app
 -------------------------------------------------
 Inputs  : nodes.csv  -> node, clients, MW
           edges.csv  -> u, v, length, lambda, Tao_RP, Tao_SW   (read by POSITION, headers are ignored)
-Model   : my_reliability_module(G) -> (df_res, SAIFI, SAIDI)
+Model   : munoz_delgado(G) -> (df_res, SAIFI, SAIDI)
           df_res columns: Node, N_RP, N_SW, D_RP, D_SW
           G node attrs : clients, MW
           G edge attrs : length, lam, tao_rp, tao_sw
@@ -19,7 +19,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from taipy.gui import Gui, notify, invoke_long_callback
+from taipy.gui import Gui, notify, get_state_id, invoke_callback, invoke_long_callback
 
 sys.setrecursionlimit(10_000)          # recursive layout on long feeders
 
@@ -55,13 +55,13 @@ view_lov = [("current", "Current scenario"),
 # 1. Reliability module (replace the demo by your own import)
 # =============================================================================
 try:
-    from reliability import my_reliability_module      # <- your module/function
+    from reliability import munoz_delgado      # <- your module/function
     DEMO_MODE = False
 except ImportError:
     DEMO_MODE = True
-    print("WARNING: 'reliability.my_reliability_module' not found -> using DEMO model")
+    print("WARNING: 'reliability.munoz_delgado' not found -> using DEMO model")
 
-    def my_reliability_module(G, source=SOURCE):
+    def munoz_delgado(G, source=SOURCE):
         """Toy radial model, ONLY to test the UI. Replace with your PuLP module."""
         rows = []
         for n in G.nodes:
@@ -529,32 +529,70 @@ def load_edges(state):
 
 
 # ---- running the model (long callback: UI stays responsive during PuLP) ---------
-def _compute(nodes, edges):
+def _compute(gui_instance, state_id, nodes, edges):
     """Runs in a background thread: NO access to `state` here."""
     G = build_graph(nodes, edges)
-    res, s_ifi, s_idi = my_reliability_module(G)
-    return {"res": res[RES_COLS].copy(), "saifi": float(s_ifi), "saidi": float(s_idi),
-            "nodes": nodes, "edges": edges}
+    res, s_ifi, s_idi = munoz_delgado(G, nodes, 1)
+    #print(f"el dataframe que viene de munoz_delgado es: {res}")
+    clean_res = res[RES_COLS].copy()
+    clean_res.reset_index(drop=True, inplace=True)
+
+    clean_nodes = nodes.copy()
+    clean_edges = edges.copy()
+    payload = {
+        "res": clean_res,
+        "saifi": float(s_ifi),
+        "saidi": float(s_idi),
+        "nodes": clean_nodes,
+        "edges": clean_edges
+    }
+
+    # Pipe the dictionary safely over the thread boundary to be executed on the UI main thread
+    invoke_callback(gui_instance, state_id, _update_ui_with_results, [payload])
+    #return {"res": clean_res, "saifi": float(s_ifi), "saidi": float(s_idi),
+    #        "nodes": clean_nodes, "edges": clean_edges}
+
+def _update_ui_with_results(state, out):
+    """Runs on the main thread: Has full access to update `state`."""
+    state.df_res = out["res"]
+    state.saifi, state.saidi = out["saifi"], out["saidi"]
+    
+    # Check if inputs were edited while the model was running
+    state.stale = not (out["nodes"].equals(state.df_nodes) and out["edges"].equals(state.df_edges))
+    state.idle = True
+    
+    for m in check_indices(out["res"], out["nodes"], out["saifi"], out["saidi"]):
+        notify(state, "warning", m)
+        
+    update_summary(state)
+    refresh(state)
+    notify(state, "success", "Reliability analysis completed")
 
 
-def _on_run_finished(state, status, *results):
+def _on_run_finished(state, status, *args):
+    #print(f"DEBUG: status={status}, type_results={type(results)}, len_results={len(results)}, results={results}")
     if status is False:                       # exception inside _compute
         state.idle = True
         notify(state, "error", "The reliability analysis failed. Check the console.")
         return
     if status is not True:                    # periodic call while running
         return
-    out = results[0]
-    state.df_res = out["res"]
-    state.saifi, state.saidi = out["saifi"], out["saidi"]
+    #print("......entró al _on_run_finished......")
+    #if not results:
+    #    print(".....NO se recibió results ......")
+    #out = results[0]
+    #print(".....pasó el almacenamiento de result[0] en out .....")
+    #state.df_res = out["res"]
+    #state.saifi, state.saidi = out["saifi"], out["saidi"]
+    #print(".....almacenó los valores de saifi y saidi.....")
     # inputs edited while the model was running -> results already outdated
-    state.stale = not (out["nodes"].equals(state.df_nodes) and out["edges"].equals(state.df_edges))
-    state.idle = True
-    for m in check_indices(out["res"], out["nodes"], out["saifi"], out["saidi"]):
-        notify(state, "warning", m)
-    update_summary(state)
-    refresh(state)
-    notify(state, "success", "Reliability analysis completed")
+    #state.stale = not (out["nodes"].equals(state.df_nodes) and out["edges"].equals(state.df_edges))
+    #state.idle = True
+    #for m in check_indices(out["res"], out["nodes"], out["saifi"], out["saidi"]):
+    #    notify(state, "warning", m)
+    #update_summary(state)
+    #refresh(state)
+    #notify(state, "success", "Reliability analysis completed")
 
 
 def run_model(state):
@@ -567,8 +605,11 @@ def run_model(state):
         return
     state.idle = False
     notify(state, "info", "Running reliability analysis...")
+
+    state_id = get_state_id(state)
+
     invoke_long_callback(state, user_function=_compute,
-                         user_function_args=[state.df_nodes.copy(), state.df_edges.copy()],
+                         user_function_args=[gui, state_id, state.df_nodes.copy(), state.df_edges.copy()],
                          user_status_function=_on_run_finished, period=1000)
 
 
@@ -667,5 +708,6 @@ page = """
 |>
 """
 
+gui = Gui(page)
 if __name__ == "__main__":
-    Gui(page).run(title="Network Reliability", port="auto")
+    gui.run(title="Network Reliability", port="auto")
