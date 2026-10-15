@@ -30,6 +30,10 @@ SOURCE = 1
 NODES_CSV = "A4243_ELC_load_data.csv"
 EDGES_CSV = "A4243_ELC_system_data.csv"
 
+#NODES_CSV = "37_nodes_load_data.csv"
+#EDGES_CSV = "37_nodes_system_data.csv"
+
+
 NODE_COLS = ["node", "clients", "MW"]
 EDGE_COLS = ["u", "v", "length", "lambda", "Tao_RP", "Tao_SW"]
 EDGE_PARAMS = ["length", "lambda", "Tao_RP", "Tao_SW"]
