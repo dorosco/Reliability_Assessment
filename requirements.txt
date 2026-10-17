@@ -3,7 +3,7 @@
 #ruff==0.0.278
 taipy
 plotly
+pandas
 #psycopg2-binary
 pulp
 networkx
-ipykernel

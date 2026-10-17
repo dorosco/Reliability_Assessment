@@ -714,4 +714,7 @@ page = """
 
 gui = Gui(page)
 if __name__ == "__main__":
-    gui.run(title="Network Reliability", port="auto")
+    gui.run(title="Confiabilidad de Redes MT Radiales",
+            host="127.0.0.1",     # use "0.0.0.0 if no reverse proxy"
+            port=5000,
+            debug=False, use_reloader=False)
